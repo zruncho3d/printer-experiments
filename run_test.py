@@ -27,6 +27,7 @@ READ_TIMEOUT=180
 # Common-arg defaults:
 DEFAULT_COMMAND = "probe_accuracy"
 DEFAULT_ITERATIONS = 1
+DFEAULT_OUTPUT_PATH = "results.json"
 
 # Text used to indicate in the console the beginning of this script's execution.
 MARKER_MESSAGE_GCODE = "M117 Running Test"
@@ -241,6 +242,10 @@ def run_test(args):
 
     print("--- %s seconds ---" % round(time.time() - start_time, 2))
 
+    if args.output:
+        with(open(args.output_path, 'w') as outfile):
+            json.dump(d2, outfile)
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run an automated, multi-iteration Klipper test.")
@@ -250,6 +255,8 @@ if __name__ == "__main__":
     parser.add_argument('--iterations', help="Number of test iterations", default=DEFAULT_ITERATIONS)
     parser.add_argument('--command', help="Command to execute", default=DEFAULT_COMMAND)
     parser.add_argument('--stats', help="Show stats", action='store_true')
+    parser.add_argument('--output', help="Write output data?", action='store_true')
+    parser.add_argument('--output_path', help="Directory at which to write output data", default=DFEAULT_OUTPUT_PATH)
     args = parser.parse_args()
 
     run_test(args)
