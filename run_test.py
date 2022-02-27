@@ -7,10 +7,11 @@ import argparse
 import json
 import os
 import pprint
-import requests
 import statistics
 import sys
 import time
+
+import requests
 
 # Moonraker api
 # https://moonraker.readthedocs.io/en/latest/web_api/#json-rpc-api-overview
