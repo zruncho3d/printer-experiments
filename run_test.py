@@ -8,6 +8,7 @@ import json
 import os
 import pprint
 import statistics
+import random
 import sys
 import time
 
@@ -27,11 +28,17 @@ READ_TIMEOUT=180
 # Common-arg defaults:
 DEFAULT_COMMAND = "probe_accuracy"
 DEFAULT_ITERATIONS = 1
-DFEAULT_OUTPUT_PATH = "results.json"
+DEFAULT_OUTPUT_PATH = "results.json"
 
 # Text used to indicate in the console the beginning of this script's execution.
 MARKER_MESSAGE_GCODE = "M117 Running Test"
 
+# Range in which to select random motions for each test.
+Z_TILT_ADJUST_MOVED_RANDOMIZED_RANGE = (1, 3)
+
+# Gap between tests; tries to avoid an apparent race condition where log entries
+# are not written immediately.
+AFTER_MARKER_GAP = 2.0
 
 def PROCESSING_FCN_PROBE_ACCURACY(messages, verbose):
     # Sample message:
@@ -83,6 +90,18 @@ def COMMANDS_FCN_Z_TILT_ADJUST_MOVED():
     ]
 
 
+def COMMANDS_FCN_Z_TILT_ADJUST_MOVED_RANDOMIZED():
+    dist = random.uniform(Z_TILT_ADJUST_MOVED_RANDOMIZED_RANGE[0], Z_TILT_ADJUST_MOVED_RANDOMIZED_RANGE[1])
+    print("Using random distance: %0.3f" % dist)
+    return [
+        "FORCE_MOVE STEPPER=stepper_z DISTANCE=%0.3f VELOCITY=40" % dist,
+        # Commented out below; re-enable for a slightly more realistic test.
+        #"DETACH_PROBE",
+        #"G28 X Y",
+        #"ATTACH_PROBE",
+        "Z_TILT_ADJUST",
+    ]
+
 # Test data and functions.
 # Values:
 #  'commands_fcn': parameter-less fcn to return a list of commands to run
@@ -102,16 +121,25 @@ COMMANDS = {
     'z_tilt_adjust_no_reset': {
         'commands_fcn': lambda: ["Z_TILT_ADJUST"],
         # 3 to 5 probes per location; if increasing to 5, then there's an extra message.
-        # Up to 3 retries.
-        # So: 4 * (6 * 3) --> 72+ messages.
+        # Up to 4 retries.
+        # So: 4 * (6 * 4) --> 100+ messages.
         'messages_per_command': 75,
         'processing_fcn': PROCESSING_FCN_Z_TILT_ADJUST,
     },
     # Z_TILT_ADJUST test where the Z tilt is intentionally messed up after each iteration.
+    # The distance for motion is always the same.
     'z_tilt_adjust_moved': {
         'commands_fcn': COMMANDS_FCN_Z_TILT_ADJUST_MOVED,
         # Same as above, plus others for our commands.
-        'messages_per_command': 100,
+        'messages_per_command': 150,
+        'processing_fcn': PROCESSING_FCN_Z_TILT_ADJUST,
+    },
+    # Z_TILT_ADJUST test where the Z tilt is intentionally messed up after each iteration.
+    # The distance for motion is randomized within a range.
+    'z_tilt_adjust_moved_randomized': {
+        'commands_fcn': COMMANDS_FCN_Z_TILT_ADJUST_MOVED_RANDOMIZED,
+        # Same as above, plus others for our commands.
+        'messages_per_command': 200,
         'processing_fcn': PROCESSING_FCN_Z_TILT_ADJUST,
     },
 }
@@ -162,7 +190,10 @@ class KlipperTest:
         # Get time from the printer, to use with rejecting earlier cached gcode
         run_gcode(self.printer, MARKER_MESSAGE_GCODE)
 
-        result = get_cached_gcode(self.printer, 1)
+        # Hacky wait time.
+        time.sleep(AFTER_MARKER_GAP)
+
+        result = get_cached_gcode(self.printer, 2)
         result_json = result.json()["result"]
         if self.verbose:
             pprint.pprint(result_json)
@@ -172,13 +203,17 @@ class KlipperTest:
         #                  'time': 1645515805.776437,
         #                  'type': 'command'}]}
         entry = result_json["gcode_store"][-1]
-        assert entry["message"] == MARKER_MESSAGE_GCODE
+        assert entry["message"] == MARKER_MESSAGE_GCODE, "Expected %s but got %s, from %s" % (MARKER_MESSAGE_GCODE, entry["message"], result_json)
         assert entry["type"] == "command"
         return entry
 
     def run(self):
         self.results = []
         for i in range(self.iterations):
+            # Attempt to clear the cache somehow.
+            result = get_cached_gcode(self.printer, self.messages_per_command)
+
+            # Then, sent our message.
             self.marker_message = self._get_marker_message()
             commands = self.commands_fcn()
             for command in commands:
@@ -206,6 +241,7 @@ class KlipperTest:
                 pprint.pprint(messages_filtered)
 
             result = self.processing_fcn(messages_filtered, self.verbose)
+            print("> Result: %s" % result)
             self.results.append(result)
 
     def get_results(self):
@@ -244,7 +280,7 @@ def run_test(args):
 
     if args.output:
         with(open(args.output_path, 'w') as outfile):
-            json.dump(d2, outfile)
+            json.dump(data, outfile)
 
 
 if __name__ == "__main__":
@@ -256,7 +292,7 @@ if __name__ == "__main__":
     parser.add_argument('--command', help="Command to execute", default=DEFAULT_COMMAND)
     parser.add_argument('--stats', help="Show stats", action='store_true')
     parser.add_argument('--output', help="Write output data?", action='store_true')
-    parser.add_argument('--output_path', help="Directory at which to write output data", default=DFEAULT_OUTPUT_PATH)
+    parser.add_argument('--output_path', help="Directory at which to write output data", default=DEFAULT_OUTPUT_PATH)
     args = parser.parse_args()
 
     run_test(args)
