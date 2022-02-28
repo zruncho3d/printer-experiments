@@ -22,6 +22,10 @@ def run_compare(args):
         d2 = json.load(f2)
     assert(len(d1) == len(d2))
 
+    if args.show_data:
+        print("%s:\n %s" % (args.one, d1))
+        print("%s:\n %s" % (args.two, d2))
+
     results = mannwhitneyu(d1, d2)
     pvalue = results.pvalue
     if pvalue < args.p_target:
@@ -30,13 +34,12 @@ def run_compare(args):
     else:
         print(colored('Data is insufficient to reject the null hypothesis, with p-value %0.4f' % pvalue, 'red'))
 
-    #print("--- %s seconds ---" % round(time.time() - start_time, 2))
-
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run a statistical comparison between two Klipper-experiment data sets.")
     parser.add_argument('one', help="Input file one; must be JSON list data")
     parser.add_argument('two', help="Input file two; must be JSON list data")
+    parser.add_argument('--show_data', help="Print out data", action='store_true')
     parser.add_argument('--verbose', help="Use more-verbose debug output", action='store_true')
     parser.add_argument('--p_target', help="Target p-value at which to declare victory", default=DEFAULT_P_TARGET)
     args = parser.parse_args()
