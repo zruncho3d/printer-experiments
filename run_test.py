@@ -105,6 +105,22 @@ def COMMANDS_FCN_Z_TILT_ADJUST_MOVED_RANDOMIZED(args):
         "Z_TILT_ADJUST",
     ]
 
+def COMMANDS_FCN_QGL_MOVED(args):
+    return [
+        "FORCE_MOVE STEPPER=stepper_z DISTANCE=2 VELOCITY=40",
+        "QUAD_GANTRY_LEVEL",
+    ]
+
+def COMMANDS_FCN_QGL_MOVED_RANDOMIZED(args):
+    dist = random.uniform(args.z_tilt_random_move_min, \
+        args.z_tilt_random_move_max)
+    print("Using random distance: %0.3f" % dist)
+    return [
+        "FORCE_MOVE STEPPER=stepper_z DISTANCE=%0.3f VELOCITY=40" % dist,
+        "QUAD_GANTRY_LEVEL",
+    ]
+
+
 
 # Test data and functions.
 # Values:
@@ -142,6 +158,29 @@ COMMANDS = {
     # The distance for motion is randomized within a range.
     'z_tilt_adjust_moved_randomized': {
         'commands_fcn': COMMANDS_FCN_Z_TILT_ADJUST_MOVED_RANDOMIZED,
+        # Same as above, plus others for our commands.
+        'messages_per_command': 200,
+        'processing_fcn': PROCESSING_FCN_Z_TILT_ADJUST,
+    },
+    # QUAD_GANTRY_LEVEL with no intentional out-of-flat change in between.
+    'qgl': {
+        'commands_fcn': lambda args: "QUAD_GANTRY_LEVEL",
+        # Same as above, plus others for our commands.
+        'messages_per_command': 200,
+        'processing_fcn': PROCESSING_FCN_Z_TILT_ADJUST,
+    },
+    # QUAD_GANTRY_LEVEL test where the bed level is intentionally messed up after each iteration.
+    # The distance for motion is always the same.
+    'qgl_moved': {
+        'commands_fcn': COMMANDS_FCN_QGL_MOVED,
+        # Same as above, plus others for our commands.
+        'messages_per_command': 200,
+        'processing_fcn': PROCESSING_FCN_Z_TILT_ADJUST,
+    },
+    # QUAD_GANTRY_LEVEL test where the bed level is intentionally messed up after each iteration.
+    # The distance for motion is randomized within a range.
+    'qgl_moved_randomized': {
+        'commands_fcn': COMMANDS_FCN_QGL_MOVED_RANDOMIZED,
         # Same as above, plus others for our commands.
         'messages_per_command': 200,
         'processing_fcn': PROCESSING_FCN_Z_TILT_ADJUST,
