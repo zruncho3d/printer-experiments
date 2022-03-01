@@ -42,8 +42,8 @@ Z_TILT_ADJUST_MOVED_RANDOMIZED_RANGE = (2, 7)
 AFTER_MARKER_GAP = 1.0
 
 # Change these to match your printer, for sure.
-START_GCODES = ["G28 X", "T0", "G28", "ATTACH_PROBE"]
-END_GCODES = ["DETACH_PROBE"]
+START_GCODES = ["G28"]
+END_GCODES = []
 
 # Extents of jittering when running Z_TILT measurements
 DEFAULT_Z_TILT_RANDOM_MOVE_MIN = 2
@@ -175,7 +175,7 @@ def get_cached_gcode(printer, count, verbose=False):
 
 class KlipperTest:
 
-    def __init__(self, printer, verbose, iterations, commands_fcn, processing_fcn, messages_per_command, args):
+    def __init__(self, printer, verbose, iterations, commands_fcn, processing_fcn, messages_per_command, args, **kwargs):
         self.printer = printer
         self.verbose = verbose
         self.iterations = iterations
@@ -183,6 +183,15 @@ class KlipperTest:
         self.processing_fcn = processing_fcn
         self.messages_per_command = messages_per_command
         self.args = args
+
+        if kwargs.get("start_gcodes") != None:
+            self.start_gcodes = json.loads(kwargs.get("start_gcodes"))
+        else:
+            self.start_gcodes = START_GCODES
+        if kwargs.get("end_gcodes") != None:
+            self.end_gcodes = json.loads(kwargs.get("end_gcodes"))
+        else:
+            self.end_gcodes = END_GCODES
 
         self.marker_message = None
         self.results = None  # List of results value (single floats)
@@ -213,7 +222,7 @@ class KlipperTest:
         return entry
 
     def run(self):
-        for gcode in START_GCODES:
+        for gcode in self.start_gcodes:
             run_gcode(self.printer, gcode)
         self.results = []
         for i in range(self.iterations):
@@ -251,7 +260,7 @@ class KlipperTest:
             print("> Result: %s" % result)
             self.results.append(result)
 
-        for gcode in END_GCODES:
+        for gcode in self.end_gcodes:
             run_gcode(self.printer, gcode)
 
 
@@ -269,7 +278,11 @@ def run_test(args):
     processing_fcn = command_metadata["processing_fcn"]
     messages_per_command = command_metadata["messages_per_command"]
 
-    test = KlipperTest(args.printer, args.verbose, iterations, commands_fcn, processing_fcn, messages_per_command, args)
+    kwargs = {
+        "start_gcodes": args.start_gcodes,
+        "end_gcodes": args.end_gcodes
+    }
+    test = KlipperTest(args.printer, args.verbose, iterations, commands_fcn, processing_fcn, messages_per_command, args, **kwargs)
     print("Starting test.")
     test.run()
     print("Test completed.")
@@ -307,6 +320,8 @@ if __name__ == "__main__":
     parser.add_argument('--output_path', help="Directory at which to write output data", default=DEFAULT_OUTPUT_PATH)
     parser.add_argument('--z_tilt_random_move_min', help="When jittering Z_TILT test, minimum of range to move", default=DEFAULT_Z_TILT_RANDOM_MOVE_MIN)
     parser.add_argument('--z_tilt_random_move_max', help="When jittering Z_TILT test, maximum of range to move", default=DEFAULT_Z_TILT_RANDOM_MOVE_MAX)
+    parser.add_argument('--start_gcodes', help="Quoted list of start gcode commands")
+    parser.add_argument('--end_gcodes', help="Quoted list of end gcode commands")
     args = parser.parse_args()
 
     run_test(args)
