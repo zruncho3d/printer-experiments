@@ -50,6 +50,10 @@ DEFAULT_Z_TILT_RANDOM_MOVE_MIN = 2
 DEFAULT_Z_TILT_RANDOM_MOVE_MAX = 7
 
 
+# Change this to meet your system
+MICROSTEP_SIZE = 0.0025
+
+
 def PROCESSING_FCN_PROBE_ACCURACY(messages, verbose):
     # Sample message:
     # {'message': '// probe accuracy results: maximum 11.995491, '
@@ -87,6 +91,49 @@ def PROCESSING_FCN_Z_TILT_ADJUST(messages, verbose):
     retries = [extract_retries(m["message"]) for m in probe_messages]
     num_retries = retries[-1]
     return num_retries
+
+
+# GET_Z_OFFSET is a macro useful for IDEX printers with a common Z nozzle endstop:
+# [gcode_macro GET_Z_OFFSET]
+# gcode:
+# 	T0
+# 	G28 Z
+# 	M400
+# 	GET_POSITION
+# 	T1
+# 	G28 Z
+# 	M400
+# 	GET_POSITION
+
+# Sample message:
+# mcu: dual_carriage:-1 stepper_y:102 stepper_y1:80 stepper_z:-11329 stepper_z1:-11329 stepper_z2:-11329 stepper_x:-8
+
+def extract_z_position(input):
+    return int(input.split('stepper_z:')[1].split(' ')[0])
+
+
+def PROCESSING_FCN_GET_Z_OFFSET(messages, verbose):
+    position_messages = [m["message"] for m in messages if "mcu: " in m["message"]]
+    if verbose:
+        print("Position messages:")
+        pprint.pprint(position_messages)
+
+    z_positions = [extract_z_position(m) for m in position_messages]
+    assert len(z_positions) == 2
+    z_diff_mm = float(z_positions[0] - z_positions[1]) * MICROSTEP_SIZE
+    return z_diff_mm
+
+
+def PROCESSING_FCN_Z_POSITION(messages, verbose):
+    position_messages = [m["message"] for m in messages if "mcu: " in m["message"]]
+    if verbose:
+        print("Position messages:")
+        pprint.pprint(position_messages)
+
+    z_positions = [extract_z_position(m) for m in position_messages]
+    assert len(z_positions) == 1
+    z_diff_mm = float(z_positions[0]) * MICROSTEP_SIZE
+    return z_diff_mm
 
 
 def COMMANDS_FCN_Z_TILT_ADJUST_MOVED(args):
@@ -184,6 +231,16 @@ COMMANDS = {
         # Same as above, plus others for our commands.
         'messages_per_command': 200,
         'processing_fcn': PROCESSING_FCN_Z_TILT_ADJUST,
+    },
+    'get_z_offset': {
+        'commands_fcn': lambda args: ["GET_Z_OFFSET"],
+        'messages_per_command': 200,
+        'processing_fcn': PROCESSING_FCN_GET_Z_OFFSET,
+    },
+    'z_position': {
+        'commands_fcn': lambda args: ["G28 Z", "M400", "GET_POSITION"],
+        'messages_per_command': 200,
+        'processing_fcn': PROCESSING_FCN_Z_POSITION,
     },
 }
 
