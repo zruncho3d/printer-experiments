@@ -389,6 +389,7 @@ def run_test(args):
     if args.stats:
         print("Printing stats:")
         median = statistics.median(data)
+        print("  Range: %0.4f" % (max(data) - min(data)))
         print("  Min: %0.4f" % min(data))
         print("  Max: %0.4f" % max(data))
         print("  Median: %0.4f" % median)
