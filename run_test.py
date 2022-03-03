@@ -9,6 +9,7 @@ import os
 import pprint
 import statistics
 import random
+import re
 import sys
 import time
 
@@ -51,7 +52,10 @@ DEFAULT_Z_TILT_RANDOM_MOVE_MAX = 7
 
 
 # Change this to meet your system
-MICROSTEP_SIZE = 0.0025
+# 16t, 200 steps/rev, 16x MS, 4:1 reduction
+MICROSTEP_Z_SIZE = 0.0025
+# 20t, 200 steps/rev, 16x MS
+MICROSTEP_XY_SIZE = 0.0125
 
 
 def PROCESSING_FCN_PROBE_ACCURACY(messages, verbose):
@@ -134,6 +138,31 @@ def PROCESSING_FCN_Z_POSITION(messages, verbose):
     assert len(z_positions) == 1
     z_diff_mm = float(z_positions[0]) * MICROSTEP_SIZE
     return z_diff_mm
+
+
+def extract_int_val(s, key):
+    return int(re.search(key + ":([-+]?\\d+)", s).group(1))
+
+
+POSITION_KEYS = ['x', 'y', 'z']
+
+def parse_position_message(m, keys):
+    return {k:extract_int_val(m, 'stepper_' + k) for k in keys}
+
+
+def PROCESSING_FCN_HOME_POSITION(messages, verbose):
+    position_messages = [m["message"] for m in messages if "mcu: " in m["message"]]
+    if verbose:
+        print("Position messages:")
+        pprint.pprint(position_messages)
+
+    positions = [parse_position_message(m, POSITION_KEYS) for m in position_messages]
+    assert len(positions) == 1
+    return {
+        'x': positions[0]['x'] * MICROSTEP_XY_SIZE,
+        'y': positions[0]['y'] * MICROSTEP_XY_SIZE,
+        'z': positions[0]['z'] * MICROSTEP_Z_SIZE
+    }
 
 
 def COMMANDS_FCN_Z_TILT_ADJUST_MOVED(args):
@@ -242,6 +271,16 @@ COMMANDS = {
         'messages_per_command': 200,
         'processing_fcn': PROCESSING_FCN_Z_POSITION,
     },
+    'home_position': {
+        'commands_fcn': lambda args: ["G28", "M400", "GET_POSITION"],
+        'messages_per_command': 200,
+        'processing_fcn': PROCESSING_FCN_HOME_POSITION,
+    },
+    'home_position_motors_off': {
+        'commands_fcn': lambda args: ["G28", "M400", "GET_POSITION", "MOTORS_OFF"],
+        'messages_per_command': 200,
+        'processing_fcn': PROCESSING_FCN_HOME_POSITION,
+    }
 }
 
 
@@ -364,6 +403,16 @@ class KlipperTest:
         return self.results
 
 
+def print_stats(data):
+    median = statistics.median(data)
+    print("  Range: %0.4f" % (max(data) - min(data)))
+    print("  Min: %0.4f" % min(data))
+    print("  Max: %0.4f" % max(data))
+    print("  Median: %0.4f" % median)
+    if len(data) > 1:
+        s = statistics.stdev(data)
+        print("  Standard Deviation: %0.3f" % s)
+
 def run_test(args):
     start_time = time.time()
     printer = args.printer
@@ -386,16 +435,23 @@ def run_test(args):
     data = test.get_results()
     print("Data: %s" % data)
 
+
+    # Override default for data keys with this particular test type.
+    if args.test_type in ['home_position', 'home_position_motors_off'] and args.data_keys is None:
+        data_keys = ['x', 'y', 'z']
+    else:
+        data_keys = args.data_keys
+
     if args.stats:
-        print("Printing stats:")
-        median = statistics.median(data)
-        print("  Range: %0.4f" % (max(data) - min(data)))
-        print("  Min: %0.4f" % min(data))
-        print("  Max: %0.4f" % max(data))
-        print("  Median: %0.4f" % median)
-        if len(data) > 1:
-            s = statistics.stdev(data)
-            print("  Standard Deviation: %0.3f" % s)
+        if data_keys:
+            for key in data_keys:
+                data_vals = [d[key] for d in data]
+                print("Printing stats for %s:" % key)
+                print_stats(data_vals)
+        else:
+            print("Printing stats:")
+            print_stats(data)
+
 
     total_time = time.time() - start_time
     time_per_iteration = total_time / iterations
@@ -419,6 +475,7 @@ if __name__ == "__main__":
     parser.add_argument('--z_tilt_random_move_max', help="When jittering Z_TILT test, maximum of range to move", default=DEFAULT_Z_TILT_RANDOM_MOVE_MAX)
     parser.add_argument('--start_gcodes', help="Quoted list of start gcode commands")
     parser.add_argument('--end_gcodes', help="Quoted list of end gcode commands")
+    parser.add_argument('--data_keys', help="Keys for data to extract vals and show stats, if the test type returns dict data")
     args = parser.parse_args()
 
     run_test(args)
