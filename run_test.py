@@ -40,7 +40,8 @@ Z_TILT_ADJUST_MOVED_RANDOMIZED_RANGE = (2, 7)
 # Gap between tests; tries to avoid an apparent race condition where a just-written
 # log entry (created by an M117 message) is not made visible to the next call to
 # get cached responses.
-AFTER_MARKER_GAP = 1.0
+# Was 1.0!
+AFTER_MARKER_GAP = 0.5
 
 # Change these to match your printer, for sure.
 START_GCODES = ["G28"]
@@ -51,11 +52,19 @@ DEFAULT_Z_TILT_RANDOM_MOVE_MIN = 2
 DEFAULT_Z_TILT_RANDOM_MOVE_MAX = 7
 
 
+# # Change this to meet your system
+# # 16t, 200 steps/rev, 16x MS, 4:1 reduction
+# MICROSTEP_Z_SIZE = 0.0025
+# # 20t, 200 steps/rev, 16x MS
+# MICROSTEP_XY_SIZE = 0.0125
+
+
 # Change this to meet your system
 # 16t, 200 steps/rev, 16x MS, 4:1 reduction
 MICROSTEP_Z_SIZE = 0.0025
-# 20t, 200 steps/rev, 16x MS
-MICROSTEP_XY_SIZE = 0.0125
+# 20t * 2mm / 200 steps/rev /64MS
+MICROSTEP_XY_SIZE = 0.003125
+
 
 
 def PROCESSING_FCN_PROBE_ACCURACY(messages, verbose):
@@ -164,6 +173,32 @@ def PROCESSING_FCN_HOME_POSITION(messages, verbose):
         'z': positions[0]['z'] * MICROSTEP_Z_SIZE
     }
 
+
+def parse_tool_locate_sensor_message(m):
+    # No idea what's causing slashes in input:
+    #  ValueError: could not convert string to float: '// 96.339844'
+    # ... but try to work around.
+    parts = m.replace("Sensor location at ", "").replace('// ',"").split(',')
+    parts = [float(v) for v in parts]
+    return {
+        'x': parts[0],
+        'y': parts[1],
+        'z': parts[2]
+    }
+
+def PROCESSING_FCN_TOOL_LOCATE_SENSOR(messages, verbose):
+    tool_locate_messages = [m["message"] for m in messages if "Sensor location at" in m["message"]]
+    if verbose:
+        print("Tool locate messages:")
+        pprint.pprint(tool_locate_messages)
+
+    positions = [parse_tool_locate_sensor_message(m) for m in tool_locate_messages]
+    assert len(positions) == 1
+    return {
+        'x': positions[0]['x'],
+        'y': positions[0]['y'],
+        'z': positions[0]['z']
+    }
 
 def COMMANDS_FCN_Z_TILT_ADJUST_MOVED(args):
     return [
@@ -280,6 +315,21 @@ COMMANDS = {
         'commands_fcn': lambda args: ["G28", "M400", "GET_POSITION", "MOTORS_OFF"],
         'messages_per_command': 200,
         'processing_fcn': PROCESSING_FCN_HOME_POSITION,
+    },
+    'home_x': {
+        'commands_fcn': lambda args: ["G28 X", "M400", "GET_POSITION"],
+        'messages_per_command': 200,
+        'processing_fcn': PROCESSING_FCN_HOME_POSITION,
+    },
+    'home_y': {
+        'commands_fcn': lambda args: ["G28 Y", "M400", "GET_POSITION"],
+        'messages_per_command': 200,
+        'processing_fcn': PROCESSING_FCN_HOME_POSITION,
+    },
+    'tool_locate_sensor': {
+        'commands_fcn': lambda args: ["M400", "TOOL_LOCATE_SENSOR"],
+        'messages_per_command': 200,
+        'processing_fcn': PROCESSING_FCN_TOOL_LOCATE_SENSOR,
     }
 }
 
@@ -437,7 +487,7 @@ def run_test(args):
 
 
     # Override default for data keys with this particular test type.
-    if args.test_type in ['home_position', 'home_position_motors_off'] and args.data_keys is None:
+    if args.test_type in ['home_x', 'home_y', 'home_position', 'home_position_motors_off', 'tool_locate_sensor'] and args.data_keys is None:
         data_keys = ['x', 'y', 'z']
     else:
         data_keys = args.data_keys
