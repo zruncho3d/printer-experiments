@@ -173,7 +173,6 @@ def PROCESSING_FCN_HOME_POSITION(messages, verbose):
         'z': positions[0]['z'] * MICROSTEP_Z_SIZE
     }
 
-
 def parse_tool_locate_sensor_message(m):
     # No idea what's causing slashes in input:
     #  ValueError: could not convert string to float: '// 96.339844'
@@ -193,6 +192,32 @@ def PROCESSING_FCN_TOOL_LOCATE_SENSOR(messages, verbose):
         pprint.pprint(tool_locate_messages)
 
     positions = [parse_tool_locate_sensor_message(m) for m in tool_locate_messages]
+    assert len(positions) == 1
+    return {
+        'x': positions[0]['x'],
+        'y': positions[0]['y'],
+        'z': positions[0]['z']
+    }
+
+def parse_offset_message(m):
+    # No idea what's causing slashes in input:
+    #  ValueError: could not convert string to float: '// 96.339844'
+    # ... but try to work around.
+    parts = m.replace("Tool offset is ", "").replace('// ',"").split(',')
+    parts = [float(v) for v in parts]
+    return {
+        'x': parts[0],
+        'y': parts[1],
+        'z': parts[2]
+    }
+
+def PROCESSING_FCN_OFFSET_CALC(messages, verbose):
+    offset_messages = [m["message"] for m in messages if "Tool offset is" in m["message"]]
+    if verbose:
+        print("Offset messages:")
+        pprint.pprint(offset_messages)
+
+    positions = [parse_offset_message(m) for m in offset_messages]
     assert len(positions) == 1
     return {
         'x': positions[0]['x'],
@@ -230,8 +255,6 @@ def COMMANDS_FCN_QGL_MOVED_RANDOMIZED(args):
         "FORCE_MOVE STEPPER=stepper_z DISTANCE=%0.3f VELOCITY=40" % dist,
         "QUAD_GANTRY_LEVEL",
     ]
-
-
 
 # Test data and functions.
 # Values:
@@ -328,6 +351,16 @@ COMMANDS = {
     },
     'tool_locate_sensor': {
         'commands_fcn': lambda args: ["M400", "TOOL_LOCATE_SENSOR"],
+        'messages_per_command': 200,
+        'processing_fcn': PROCESSING_FCN_TOOL_LOCATE_SENSOR,
+    },
+    'offset_calc': {
+        'commands_fcn': lambda args: ["M400", "MY_SEQUENCE_OFFSET"],
+        'messages_per_command': 200,
+        'processing_fcn': PROCESSING_FCN_OFFSET_CALC,
+    },
+    'my_sequence': {
+        'commands_fcn': lambda args: ["M400", "MY_SEQUENCE"],
         'messages_per_command': 200,
         'processing_fcn': PROCESSING_FCN_TOOL_LOCATE_SENSOR,
     }
@@ -487,7 +520,7 @@ def run_test(args):
 
 
     # Override default for data keys with this particular test type.
-    if args.test_type in ['home_x', 'home_y', 'home_position', 'home_position_motors_off', 'tool_locate_sensor'] and args.data_keys is None:
+    if args.test_type in ['home_x', 'home_y', 'home_position', 'home_position_motors_off', 'tool_locate_sensor', 'my_sequence', 'offset_calc'] and args.data_keys is None:
         data_keys = ['x', 'y', 'z']
     else:
         data_keys = args.data_keys
