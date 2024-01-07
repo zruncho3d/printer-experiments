@@ -461,7 +461,7 @@ def print_stats(data):
     print("  Median: %0.4f" % median)
     if len(data) > 1:
         s = statistics.stdev(data)
-        print("  Standard Deviation: %0.3f" % s)
+        print("  Standard Deviation: %0.4f" % s)
 
 def run_test(args):
     start_time = time.time()
